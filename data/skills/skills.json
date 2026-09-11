@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Python",
+    "category": "Programming",
+    "description": "A high-level, interpreted programming language known for its readability and versatility.",
+    "aliases": ["Python", "Python programming", "Python language"]
+  },
+  {
+    "name": "Java",
+    "category": "Programming",
+    "description": "A class-based, object-oriented programming language designed to have as few implementation dependencies as possible.",
+    "aliases": ["Java", "Java programming", "Java language"]
+  },
+  {
+    "name": "SQL",
+    "category": "Database",
+    "description": "A domain-specific language used in programming and designed for managing data held in a relational database management system.",
+    "aliases": ["SQL", "Structured Query Language", "SQL query"]
+  },
+  {
+    "name": "React",
+    "category": "Frontend",
+    "description": "A JavaScript library for building user interfaces, particularly single-page applications.",
+    "aliases": ["React", "React.js", "ReactJS", "React library"]
+  },
+  {
+    "name": "Docker",
+    "category": "DevOps",
+    "description": "A set of platform-as-a-service products that use OS-level virtualization to deliver software in packages called containers.",
+    "aliases": ["Docker", "Docker container", "Docker platform"]
+  },
+  {
+    "name": "Git",
+    "category": "Version Control",
+    "description": "A distributed version control system for tracking changes in source code during software development.",
+    "aliases": ["Git", "Git version control", "Git SCM"]
+  },
+  {
+    "name": "REST APIs",
+    "category": "Web Development",
+    "description": "An architectural style for designing networked applications, relying on a stateless, client-server, cacheable communications protocol.",
+    "aliases": ["REST API", "RESTful API", "REST", "REST APIs"]
+  },
+  {
+    "name": "System Design",
+    "category": "Software Engineering",
+    "description": "The process of defining the architecture, modules, interfaces, and data for a system to satisfy specified requirements.",
+    "aliases": ["System Design", "Systems Design", "System architecture"]
+  }
+]

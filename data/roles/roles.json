@@ -1,0 +1,146 @@
+[
+  {
+    "id": "software_engineer",
+    "name": "Software Engineer",
+    "description": "Builds scalable software systems and applications",
+    "category": "Engineering",
+    "required_skills": [
+      {
+        "skill_id": "Python",
+        "minimum_proficiency": "intermediate",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "Java",
+        "minimum_proficiency": "intermediate",
+        "priority": "important",
+        "is_core": true
+      },
+      {
+        "skill_id": "SQL",
+        "minimum_proficiency": "intermediate",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "Git",
+        "minimum_proficiency": "advanced",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "REST APIs",
+        "minimum_proficiency": "intermediate",
+        "priority": "important",
+        "is_core": false
+      },
+      {
+        "skill_id": "Docker",
+        "minimum_proficiency": "beginner",
+        "priority": "nice_to_have",
+        "is_core": false
+      },
+      {
+        "skill_id": "System Design",
+        "minimum_proficiency": "intermediate",
+        "priority": "important",
+        "is_core": false
+      }
+    ]
+  },
+  {
+    "id": "data_analyst",
+    "name": "Data Analyst",
+    "description": "Analyzes data and creates insights for business decisions",
+    "category": "Data",
+    "required_skills": [
+      {
+        "skill_id": "SQL",
+        "minimum_proficiency": "advanced",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "Python",
+        "minimum_proficiency": "intermediate",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "React",
+        "minimum_proficiency": "beginner",
+        "priority": "nice_to_have",
+        "is_core": false
+      },
+      {
+        "skill_id": "Git",
+        "minimum_proficiency": "intermediate",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "System Design",
+        "minimum_proficiency": "beginner",
+        "priority": "important",
+        "is_core": false
+      },
+      {
+        "skill_id": "JavaScript",
+        "minimum_proficiency": "intermediate",
+        "priority": "important",
+        "is_core": false
+      }
+    ]
+  },
+  {
+    "id": "frontend_developer",
+    "name": "Frontend Developer",
+    "description": "Builds user interfaces and client-side applications",
+    "category": "Web",
+    "required_skills": [
+      {
+        "skill_id": "React",
+        "minimum_proficiency": "advanced",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "JavaScript",
+        "minimum_proficiency": "advanced",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "HTML/CSS",
+        "minimum_proficiency": "advanced",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "Git",
+        "minimum_proficiency": "advanced",
+        "priority": "critical",
+        "is_core": true
+      },
+      {
+        "skill_id": "Python",
+        "minimum_proficiency": "beginner",
+        "priority": "nice_to_have",
+        "is_core": false
+      },
+      {
+        "skill_id": "Docker",
+        "minimum_proficiency": "beginner",
+        "priority": "nice_to_have",
+        "is_core": false
+      },
+      {
+        "skill_id": "TypeScript",
+        "minimum_proficiency": "intermediate",
+        "priority": "important",
+        "is_core": false
+      }
+    ]
+  }
+]
