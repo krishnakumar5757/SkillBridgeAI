@@ -21,7 +21,9 @@ from datetime import datetime
 from sqlalchemy import Column, MetaData, String, Table, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
+from app.core.config import DEFAULT_DATABASE_PATH, resolve_database_url
 from app.core.database import Base, check_db_connection, get_db, init_db, redact_db_url
+from app.core.config import DEFAULT_DATABASE_PATH, settings
 from app.models.base import BaseMixin
 
 
@@ -216,3 +218,7 @@ class TestDbUrlRedaction:
     def test_no_scheme_unchanged(self):
         """Bare paths (no scheme) should be returned unchanged."""
         assert redact_db_url("./skillbridge.db") == "./skillbridge.db"
+
+    def test_relative_sqlite_path_resolves_to_backend_directory(self):
+        resolved = resolve_database_url("sqlite:///./skillbridge.db")
+        assert resolved == f"sqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"

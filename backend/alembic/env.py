@@ -10,7 +10,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from app.core.config import settings
+from app.core.config import resolve_database_url, settings
 from app.core.database import Base
 
 # Import all models here so they are registered on Base.metadata
@@ -21,7 +21,7 @@ from app.models import skill, student
 config = context.config
 
 # Set the database URL from application settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", resolve_database_url(settings.DATABASE_URL))
 
 # Logging configuration
 if config.config_file_name is not None:

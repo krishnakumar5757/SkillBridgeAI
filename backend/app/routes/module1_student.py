@@ -28,9 +28,11 @@ from app.services.module1 import (
     interest_service,
     profile_service,
     project_service,
-    resume_service,
     student_skill_service,
 )
+from app.services.module1.resume_service import ResumeService
+
+resume_service = ResumeService()
 
 router = APIRouter(tags=["module-1"])
 
@@ -225,7 +227,7 @@ def get_skills(
 # Resume Upload & Processing
 # ---------------------------------------------------------------------------
 @router.post(
-    "/resumes/upload",
+    "/students/{student_id}/resumes/upload",
     status_code=status.HTTP_201_CREATED,
 )
 def upload_resume(

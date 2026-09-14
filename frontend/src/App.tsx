@@ -18,7 +18,9 @@ function App() {
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/career" element={<CareerPage />} />
         <Route path="/roadmap" element={<RoadmapPage />} />
+        <Route path="/roadmap/:roleId" element={<RoadmapPage />} />
         <Route path="/readiness" element={<ReadinessPage />} />
+        <Route path="/readiness/:roleId" element={<ReadinessPage />} />
         <Route path="/health" element={<HealthPage />} />
       </Route>
     </Routes>

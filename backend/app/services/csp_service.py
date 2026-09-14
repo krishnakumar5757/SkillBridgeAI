@@ -15,16 +15,22 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
-from fastapi import Depends
+from app.utils import normalize_role_required_skills
 
 # Add the backtracking-csp module to path so we can import its components
-_BACKTRACKING_CSP_PATH = r"D:\FOAI\Skillbridge\modules\module-4-career-readiness\backtracking-csp"
-if _BACKTRACKING_CSP_PATH not in sys.path:
-    sys.path.insert(0, _BACKTRACKING_CSP_PATH)
+_BACKTRACKING_CSP_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "modules"
+    / "module-4-career-readiness"
+    / "backtracking-csp"
+)
+_BACKTRACKING_CSP_PATH_STR = str(_BACKTRACKING_CSP_PATH)
+if _BACKTRACKING_CSP_PATH_STR not in sys.path:
+    sys.path.insert(0, _BACKTRACKING_CSP_PATH_STR)
 
-from app.core.database import get_db
 from app.services.module3_learning import get_student_skills_from_db
 
 # Import CSP components from the existing Module 4 backtracking-csp package
@@ -34,7 +40,6 @@ from constraints import (  # noqa: E402
     required_skills,
     conflicting_skills,
     dependency_validation,
-    prerequisite_ordering,
 )
 
 # Path to roles.json
@@ -63,8 +68,8 @@ def _load_student_skills(student_id: str, db: Any = None) -> dict[str, str]:
 
     Args:
         student_id: student identifier
-        db: database session (optional; for standalone testing without a session,
-            pass db=None and the function will use a fallback approach)
+        db: database session. If omitted, role skill UUID normalization cannot
+            be performed and solve_csp() returns an explicit failure.
 
     Returns:
         dict mapping skill_id -> proficiency_level, or empty dict if student not found
@@ -72,9 +77,9 @@ def _load_student_skills(student_id: str, db: Any = None) -> dict[str, str]:
     if db is not None:
         skills = get_student_skills_from_db(student_id, db)
     else:
-        # No db session provided — return empty dict.
-        # The CSP will have no student skills, meaning all role skills are "needed".
-        # This mode is intended for testing; in production, always provide a db session.
+        # No database session means student skills cannot be loaded. The role
+        # normalization boundary below will return an explicit failure rather
+        # than comparing names with UUIDs.
         skills = {}
     if skills is not None:
         return skills
@@ -97,25 +102,37 @@ def _build_csp_variables(
     """Build CSP variable names and domains for skills the student doesn't have.
 
     Returns:
-        variable_names: list of skill names to consider as CSP variables
+        variable_names: list of normalized skill UUIDs to consider as CSP variables
         domains: mapping variable_name -> list of possible values (proficiency levels)
     """
-    # Skills student already has
+    # Skills student already has (keyed by UUID from database)
     student_skill_ids = set(student_skills.keys())
 
-    # Skills required by the role
-    required_skill_ids = set()
+    # Role skill IDs have already been normalized to UUIDs by solve_csp().
+    # A skill is needed when it is absent or below the role's minimum level.
+    proficiency_levels = {"beginner": 1, "intermediate": 2, "advanced": 3}
+    needed_skills: set[str] = set()
     for skill_info in role_required_skills:
-        required_skill_ids.add(skill_info["skill_id"])
+        skill_id = skill_info["skill_id"]
+        if skill_id is None:
+            continue
 
-    # Skills the student needs to learn (in role but not possessed)
-    needed_skills = required_skill_ids - student_skill_ids
+        required_rank = proficiency_levels.get(
+            skill_info.get("minimum_proficiency", "beginner"),
+            proficiency_levels["beginner"],
+        )
+        current_rank = proficiency_levels.get(
+            student_skills.get(skill_id, "beginner"),
+            proficiency_levels["beginner"],
+        )
+        if skill_id not in student_skill_ids or current_rank < required_rank:
+            needed_skills.add(skill_id)
 
     if not needed_skills:
         return [], {}
 
     # Build domains: for each needed skill, possible proficiency levels
-    proficiency_levels = ["beginner", "intermediate", "advanced"]
+    proficiency_names = ["beginner", "intermediate", "advanced"]
 
     domains: dict[str, list[str]] = {}
     for skill in sorted(needed_skills):
@@ -126,15 +143,17 @@ def _build_csp_variables(
                 min_prof = skill_info.get("minimum_proficiency", "beginner")
                 break
         # Domain: from the role's minimum up to advanced
-        min_idx = proficiency_levels.index(min_prof) if min_prof in proficiency_levels else 0
-        domains[skill] = proficiency_levels[min_idx:]
+        min_idx = proficiency_names.index(min_prof) if min_prof in proficiency_names else 0
+        domains[skill] = proficiency_names[min_idx:]
 
     variable_names = sorted(domains.keys())
     return variable_names, domains
 
 
 def _prerequisite_core_check(
-    assigned: dict[str, str], role_required_skills: list[dict[str, str]]
+    assigned: dict[str, str],
+    role_required_skills: list[dict[str, str]],
+    possessed_skill_ids: set[str] | None = None,
 ) -> bool:
     """Check that if a non-core skill is assigned, at least one core skill is also assigned.
 
@@ -159,7 +178,7 @@ def _prerequisite_core_check(
             non_core_skills.add(skill_name)
 
     # If any non-core skill is assigned, at least one core skill must also be assigned
-    assigned_skill_names = set(assigned.keys())
+    assigned_skill_names = set(assigned.keys()) | (possessed_skill_ids or set())
     non_core_assigned = assigned_skill_names & non_core_skills
     if non_core_assigned and not (assigned_skill_names & core_skills):
         return False
@@ -175,7 +194,8 @@ def solve_csp(student_id: str, role_id: str, db: Any = None) -> dict[str, Any]:
     Args:
         student_id: student identifier
         role_id: target career role identifier
-        db: database session (optional; injected by FastAPI dependency in production)
+        db: database session injected by FastAPI. If omitted, the result is an
+            explicit failure because role skill UUIDs cannot be resolved.
 
     Returns:
         dict with keys:
@@ -202,15 +222,49 @@ def solve_csp(student_id: str, role_id: str, db: Any = None) -> dict[str, Any]:
             "algorithm": "CSP Backtracking with MRV",
         }
 
-    # Build CSP variables for skills the student doesn't have
-    variable_names, domains = _build_csp_variables(student_skills, role_required_skills)
+    # Normalize role requirements once before calculating the UUID set
+    # difference in _build_csp_variables().
+    normalized_role_skills = normalize_role_required_skills(db, role_required_skills)
+    unresolved_role_skills = [
+        requirement["skill_name"]
+        for requirement in normalized_role_skills
+        if requirement["skill_id"] is None
+    ]
+    if unresolved_role_skills:
+        return {
+            "success": False,
+            "ordered_selected_skills": [],
+            "assignments": {},
+            "constraints_checked": 0,
+            "backtrack_count": 0,
+            "failure_reason": (
+                "Unable to resolve role skills: "
+                + ", ".join(unresolved_role_skills)
+            ),
+            "algorithm": "CSP Backtracking with MRV",
+        }
+
+    skill_names_by_id = {
+        skill_info["skill_id"]: skill_info["skill_name"]
+        for skill_info in normalized_role_skills
+    }
+
+    def display_skill_id(skill_id: str) -> str:
+        return skill_names_by_id.get(skill_id, skill_id)
+
+    variable_names, domains = _build_csp_variables(student_skills, normalized_role_skills)
 
     if not variable_names:
         # Student already has all required skills
         return {
             "success": True,
-            "ordered_selected_skills": list(student_skills.keys()),
-            "assignments": {name: prof for name, prof in student_skills.items()},
+            "ordered_selected_skills": [
+                display_skill_id(skill_id) for skill_id in student_skills.keys()
+            ],
+            "assignments": {
+                display_skill_id(skill_id): proficiency
+                for skill_id, proficiency in student_skills.items()
+            },
             "constraints_checked": 0,
             "backtrack_count": 0,
             "failure_reason": None,
@@ -228,14 +282,18 @@ def solve_csp(student_id: str, role_id: str, db: Any = None) -> dict[str, Any]:
 
     # 1. Prerequisite constraint: if a non-core skill is assigned, at least one core skill must also be assigned
     csp.add_constraint(
-        lambda assigned: _prerequisite_core_check(assigned, role_required_skills)
+        lambda assigned: _prerequisite_core_check(
+            assigned,
+            normalized_role_skills,
+            set(student_skills.keys()),
+        )
     )
 
     # 2. Required skills constraint: at least min_count of required skills must be assigned
     # During search, use min_count=0 so partial assignments are never rejected;
     # required skills are verified after a complete solution is found.
     required_skill_ids = set()
-    for skill_info in role_required_skills:
+    for skill_info in normalized_role_skills:
         required_skill_ids.add(skill_info["skill_id"])
 
     # Use a closure to capture required_skill_ids
@@ -274,15 +332,22 @@ def solve_csp(student_id: str, role_id: str, db: Any = None) -> dict[str, Any]:
     ordered_selected_skills: list[str] = []
     if result.success and result.ordered_selected_skills is not None:
         # Use the topological sort from the solver
-        ordered_selected_skills = result.ordered_selected_skills
+        ordered_selected_skills = [
+            display_skill_id(skill_id) for skill_id in result.ordered_selected_skills
+        ]
     elif result.success:
         # Fallback: sort assignments keys
-        ordered_selected_skills = sorted(result.assignments.keys())
+        ordered_selected_skills = [
+            display_skill_id(skill_id) for skill_id in sorted(result.assignments.keys())
+        ]
 
     return {
         "success": result.success,
         "ordered_selected_skills": ordered_selected_skills,
-        "assignments": result.assignments,
+        "assignments": {
+            display_skill_id(skill_id): proficiency
+            for skill_id, proficiency in result.assignments.items()
+        },
         "constraints_checked": result.constraints_checked,
         "backtrack_count": result.backtrack_count,
         "failure_reason": result.failure_reason,

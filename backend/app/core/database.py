@@ -12,7 +12,7 @@ from urllib.parse import urlparse, urlunparse
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from app.core.config import settings
+from app.core.config import resolve_database_url, settings
 
 logger = logging.getLogger("app.core.database")
 
@@ -55,18 +55,19 @@ def redact_db_url(url: str) -> str:
 # ---------------------------------------------------------------------------
 _connect_args: dict = {}
 _engine_kwargs: dict = {}
+DATABASE_URL = resolve_database_url(settings.DATABASE_URL)
 
-if settings.DATABASE_URL.startswith("sqlite"):
+if DATABASE_URL.startswith("sqlite"):
     # SQLite needs check_same_thread=False for FastAPI's threaded usage.
     _connect_args = {"check_same_thread": False}
     # Use StaticPool for in-memory SQLite to share connection across threads.
-    if ":memory:" in settings.DATABASE_URL:
+    if ":memory:" in DATABASE_URL:
         from sqlalchemy.pool import StaticPool
 
         _engine_kwargs = {"poolclass": StaticPool}
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    DATABASE_URL,
     connect_args=_connect_args,
     echo=settings.DEBUG,
     **_engine_kwargs,

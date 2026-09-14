@@ -10,9 +10,11 @@ import type {
   ProjectResponse,
   StudentSkillCreateRequest,
   StudentSkillResponse,
+  ResumeUploadResponse,
 } from './types';
 import {
   createProfile,
+  getProfile,
   createAcademicInfo,
   getAcademicInfo,
   createInterest,
@@ -21,6 +23,7 @@ import {
   getProjects,
   addSelfReportedSkill,
   getSkills,
+  uploadResume,
 } from './service';
 
 /**
@@ -74,6 +77,12 @@ function StudentProfilePage() {
     proficiency: 'beginner',
   });
 
+  // State for resume upload
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [resumeResult, setResumeResult] = useState<ResumeUploadResponse | null>(null);
+
   // Helper to reset form states
   const resetAcademicForm = () => {
     setAcademicForm({
@@ -98,8 +107,44 @@ function StudentProfilePage() {
   };
 
   // Effect to fetch profile data when we have a student ID from URL or state
-  // For simplicity, we'll assume we are creating a new student and then fetching after creation.
-  // We'll also fetch lists when the student ID changes.
+  // Restore the existing profile after a browser refresh when an ID is stored.
+  useEffect(() => {
+    const studentId = typeof window !== 'undefined'
+      ? localStorage.getItem('skillbridge_student_id')
+      : null;
+    if (!studentId) return;
+
+    let cancelled = false;
+    setProfileLoading(true);
+    setProfileError(null);
+    getProfile(studentId)
+      .then((data) => {
+        if (!cancelled) {
+          setProfile(data);
+          setProfileForm((current) => (
+            current.first_name || current.last_name || current.email
+              ? current
+              : {
+                  first_name: data.first_name,
+                  last_name: data.last_name,
+                  email: data.email,
+                }
+          ));
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setProfileError(err instanceof Error ? err.message : 'Unable to load the saved student profile');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fetch academic information when student ID changes
   useEffect(() => {
@@ -214,6 +259,11 @@ function StudentProfilePage() {
         email: profileForm.email,
       });
       setProfile(data);
+      // Persist student ID and name to localStorage for other frontend parts
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('skillbridge_student_id', data.id);
+        localStorage.setItem('skillbridge_student_name', `${data.first_name} ${data.last_name}`);
+      }
       // After creating profile, we will fetch the lists in the useEffects above
     } catch (err) {
       if (err instanceof Error) {
@@ -318,6 +368,36 @@ function StudentProfilePage() {
     }
   };
 
+  const handleResumeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResumeError(null);
+    setResumeResult(null);
+
+    if (!resumeFile) {
+      setResumeError('Please select a resume file first');
+      return;
+    }
+
+    const studentId = typeof window !== 'undefined'
+      ? localStorage.getItem('skillbridge_student_id')
+      : null;
+    if (!studentId) {
+      setResumeError('Please create a student profile before uploading a resume');
+      return;
+    }
+
+    setResumeLoading(true);
+    try {
+      const result = await uploadResume(studentId, resumeFile);
+      setResumeResult(result);
+      setResumeFile(null);
+    } catch (err) {
+      setResumeError(err instanceof Error ? err.message : 'Unable to upload and process the resume');
+    } finally {
+      setResumeLoading(false);
+    }
+  };
+
   // Profile form state
   const [profileForm, setProfileForm] = useState<StudentProfileCreateRequest>({
     first_name: '',
@@ -389,6 +469,32 @@ function StudentProfilePage() {
             </p>
           </div>
         )}
+      </section>
+
+      {/* Resume Upload */}
+      <section className="resume-form-section">
+        <h2>Resume</h2>
+        <form onSubmit={handleResumeSubmit}>
+          <label>
+            Resume file:
+            <input
+              type="file"
+              accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+              onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)}
+              disabled={resumeLoading}
+            />
+          </label>
+          <button type="submit" disabled={resumeLoading}>
+            {resumeLoading ? 'Uploading and processing...' : 'Upload Resume'}
+          </button>
+          {resumeError && <p className="error" role="alert">{resumeError}</p>}
+          {resumeResult && (
+            <p className="success" role="status">
+              {resumeResult.message || 'Resume processed successfully.'}
+              {resumeResult.file_name ? ` (${resumeResult.file_name})` : ''}
+            </p>
+          )}
+        </form>
       </section>
 
       {/* Academic Information Form */}

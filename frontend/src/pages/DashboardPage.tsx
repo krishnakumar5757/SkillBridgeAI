@@ -7,26 +7,56 @@ import { Icon } from '../components/Layout';
 function DashboardPage() {
   const [roles, setRoles] = useState<CareerRoleSummary[]>([]);
   const [role, setRole] = useState<CareerRoleSummary | null>(null);
+  const [roleSelectionInitialized, setRoleSelectionInitialized] = useState(false);
   const [gap, setGap] = useState<SkillGapAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   const name = typeof window !== 'undefined' ? localStorage.getItem('skillbridge_student_name') : null;
   const studentId = typeof window !== 'undefined' ? localStorage.getItem('skillbridge_student_id') : null;
+  const storedRoleId = typeof window !== 'undefined' ? localStorage.getItem('skillbridge_selected_role_id') : null;
 
   useEffect(() => {
     listCareerRoles().then((data) => setRoles(data)).catch(() => setApiError(true));
   }, []);
   useEffect(() => {
-    if (!role || !studentId) { setGap(null); setLoading(false); return; }
+    let cancelled = false;
+
+    if (!role || !studentId) { setGap(null); setLoading(false); return () => undefined; }
+    setGap(null);
     setLoading(true);
-    analyzeSkillGap(studentId, role.id).then(setGap).catch(() => setApiError(true)).finally(() => setLoading(false));
+    analyzeSkillGap(studentId, role.id)
+      .then((data) => { if (!cancelled) setGap(data); })
+      .catch(() => { if (!cancelled) { setGap(null); setApiError(true); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
   }, [role, studentId]);
-  useEffect(() => { if (roles.length && !role) setRole(roles[0]); }, [roles, role]);
+  useEffect(() => {
+    if (roles.length && !role && !roleSelectionInitialized) {
+      setRole(roles.find((candidate) => candidate.id === storedRoleId) ?? roles[0]);
+      setRoleSelectionInitialized(true);
+    }
+  }, [roles, role, roleSelectionInitialized, storedRoleId]);
+  useEffect(() => {
+    if (role && typeof window !== 'undefined') {
+      localStorage.setItem('skillbridge_selected_role_id', role.id);
+      window.dispatchEvent(new CustomEvent<string>('skillbridge-role-change', { detail: role.id }));
+    }
+  }, [role]);
 
   const coverage = gap?.skill_coverage_percent ?? 0;
   const circumference = 2 * Math.PI * 50;
   const dash = circumference - (coverage / 100) * circumference;
   const priority = useMemo(() => [...(gap?.prioritized_missing ?? []), ...(gap?.prioritized_weak ?? [])].slice(0, 4), [gap]);
+  const handleRoleChange = (roleId: string) => {
+    const selectedRole = roles.find((candidate) => candidate.id === roleId) ?? null;
+    setRole(selectedRole);
+    setRoleSelectionInitialized(true);
+    if (!selectedRole && typeof window !== 'undefined') {
+      localStorage.removeItem('skillbridge_selected_role_id');
+      window.dispatchEvent(new CustomEvent<string>('skillbridge-role-change', { detail: '' }));
+    }
+  };
 
   return (
     <div className="dashboard page-enter">
@@ -68,7 +98,7 @@ function DashboardPage() {
 
         <div className="glass-card role-card">
           <div className="card-head"><div><span className="section-kicker">CAREER TARGET</span><h3>Where are you heading?</h3></div><Icon name="target" size={22}/></div>
-          <div className="role-select-wrap"><select value={role?.id ?? ''} onChange={(e) => setRole(roles.find((r) => r.id === e.target.value) ?? null)}><option value="">Select a career role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
+          <div className="role-select-wrap"><select value={role?.id ?? ''} onChange={(e) => handleRoleChange(e.target.value)}><option value="">Select a career role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
           {role ? <><p className="role-description">{role.description}</p><div className="role-meta"><span>{role.required_skill_count} required skills</span><span>{role.core_skills} core</span><span>{role.critical_skills} critical</span></div></> : <div className="empty-inline">Connect your profile to start personalized career analysis.</div>}
         </div>
 
@@ -78,7 +108,7 @@ function DashboardPage() {
         </div>
 
         <div className="glass-card journey-card">
-          <div className="card-head"><div><span className="section-kicker">YOUR JOURNEY</span><h3>From skills to career readiness</h3></div><NavLink to="/roadmap" className="text-link">View roadmap <Icon name="arrow" size={14}/></NavLink></div>
+          <div className="card-head"><div><span className="section-kicker">YOUR JOURNEY</span><h3>From skills to career readiness</h3></div><div>{role && <NavLink to={`/readiness/${role.id}`} className="text-link">Readiness <Icon name="arrow" size={14}/></NavLink>}<NavLink to={role ? `/roadmap/${role.id}` : '/career'} className="text-link">View roadmap <Icon name="arrow" size={14}/></NavLink></div></div>
           <div className="journey"><JourneyStep n="01" title="Profile" text="Build your student profile" active/><JourneyStep n="02" title="Skill Gap" text="Compare skills to a target role" active={!!gap}/><JourneyStep n="03" title="A* Roadmap" text="Find an efficient learning path"/><JourneyStep n="04" title="Readiness" text="Validate career preparedness"/></div>
         </div>
       </section>

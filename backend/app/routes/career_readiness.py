@@ -17,7 +17,7 @@ from typing import Any
 from app.core.database import get_db
 from app.services.career_readiness import analyze_career_readiness
 
-router = APIRouter(prefix="/api/v1/career-readiness", tags=["Career Readiness"])
+router = APIRouter(prefix="/career-readiness", tags=["Career Readiness"])
 
 
 @router.post("/analyze", response_model=dict[str, Any])

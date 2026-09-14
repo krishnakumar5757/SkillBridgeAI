@@ -27,6 +27,7 @@ from app.utils.constants import (
 )
 from app.services.module2_career import get_student_skills, analyze_skill_gap
 from app.models.student import Student
+from app.utils import normalize_role_required_skills
 
 # Role data loaded from roles.json
 _ROLES_PATH = os.path.join(
@@ -184,6 +185,8 @@ def analyze_career_readiness(student_id: str, role_id: str, db: Session = None) 
                 "algorithm": "Career Readiness Analysis",
             }
 
+        normalized_role_required_skills = normalize_role_required_skills(db, role_required_skills)
+
         # --- Get student skills from DB using existing helper ---
         student_skills = get_student_skills(db, student_id)
 
@@ -191,7 +194,10 @@ def analyze_career_readiness(student_id: str, role_id: str, db: Session = None) 
         # as skill_id, but get_student_skills keys are DB skill UUIDs.
         student_skills_by_name: dict[str, dict[str, Any]] = {}
         for skill_id, skill_info in student_skills.items():
-            student_skills_by_name[skill_info["skill_name"]] = skill_info
+            student_skills_by_name[skill_info["skill_name"]] = {
+                **skill_info,
+                "skill_id": skill_id,
+            }
 
         # --- Build gap analysis structure ---
         skills_met: list[dict[str, Any]] = []
@@ -200,12 +206,13 @@ def analyze_career_readiness(student_id: str, role_id: str, db: Session = None) 
 
         # Get role required skill IDs
         required_skill_ids = set()
-        for skill_info in role_required_skills:
+        for skill_info in normalized_role_required_skills:
             required_skill_ids.add(skill_info["skill_id"])
 
         # Analyze each required skill
-        for req_skill in role_required_skills:
-            skill_name = req_skill["skill_id"]  # e.g. 'Python', 'SQL'
+        for req_skill in normalized_role_required_skills:
+            skill_name = req_skill.get("skill_name") or req_skill.get("skill_id") or "Unknown skill"
+            skill_id = req_skill.get("skill_id") or skill_name
             required_prof = req_skill.get("minimum_proficiency", "intermediate")
             priority = req_skill.get("priority", "important")
             is_core = req_skill.get("is_core", False)
@@ -227,7 +234,7 @@ def analyze_career_readiness(student_id: str, role_id: str, db: Session = None) 
                     match_status = "Missing"
 
                 result = {
-                    "skill_id": skill_id,
+                    "skill_id": student_skills_by_name[skill_name]["skill_id"],
                     "skill_name": student_skills_by_name[skill_name]["skill_name"],
                     "required_proficiency": required_prof,
                     "current_proficiency": student_prof,
@@ -247,8 +254,8 @@ def analyze_career_readiness(student_id: str, role_id: str, db: Session = None) 
             else:
                 # Student does not have this skill at all - it's missing
                 skills_missing.append({
-                    "skill_id": skill_name,
-                    "skill_name": req_skill.get("skill_name", skill_name),
+                    "skill_id": skill_id,
+                    "skill_name": skill_name,
                     "required_proficiency": required_prof,
                     "current_proficiency": None,
                     "match_status": "Missing",

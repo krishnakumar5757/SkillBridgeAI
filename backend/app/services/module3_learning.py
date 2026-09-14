@@ -12,7 +12,10 @@ The service orchestrates:
 5. Returning the personalized learning roadmap
 """
 
+from pathlib import Path
 from typing import Any
+
+from app.utils import normalize_role_required_skills
 
 
 def _import_astar():
@@ -20,9 +23,10 @@ def _import_astar():
     import importlib
     import sys
 
-    astar_path = r"D:\FOAI\Skillbridge\modules\module-3-learning-intelligence\astar"
-    if astar_path not in sys.path:
-        sys.path.insert(0, astar_path)
+    astar_path = Path(__file__).resolve().parents[3] / "modules" / "module-3-learning-intelligence" / "astar"
+    astar_path_str = str(astar_path)
+    if astar_path_str not in sys.path:
+        sys.path.insert(0, astar_path_str)
 
     # Import the algorithm and graph modules
     algorithm_mod = importlib.import_module("algorithm")
@@ -50,7 +54,6 @@ def get_student_skills_from_db(student_id: str, db) -> dict[str, str]:
         (e.g., {"Python": "intermediate", "SQL": "beginner"}).
     """
     try:
-        from app.models.student import Student
         from app.models.skill import StudentSkill, Skill
 
         student_skills = (
@@ -63,17 +66,18 @@ def get_student_skills_from_db(student_id: str, db) -> dict[str, str]:
         # Build map: skill_id -> best proficiency
         # Priority: resume > self-reported (resume evidence upgrades proficiency)
         skills: dict[str, str] = {}
-        best: dict[int, str] = {}  # index -> proficiency string
+        best: dict[str, int] = {}
 
-        prof_map = {"beginner": "beginner", "intermediate": "intermediate", "advanced": "advanced"}
+        prof_map = {"beginner": 1, "intermediate": 2, "advanced": 3}
+        prof_names = {rank: name for name, rank in prof_map.items()}
 
         for ss, skill in student_skills:
             sid = skill.id
-            prof = prof_map.get(ss.proficiency, "beginner")
+            prof_rank = prof_map.get(ss.proficiency, 1)
 
-            if sid not in best or prof_map[prof] > best[sid]:
-                best[sid] = prof
-                skills[sid] = prof
+            if sid not in best or prof_rank > best[sid]:
+                best[sid] = prof_rank
+                skills[sid] = prof_names[prof_rank]
 
         return skills
 
@@ -109,6 +113,48 @@ def get_role_required_skills(role_id: str) -> list[dict[str, Any]] | None:
             return role["required_skills"]
 
     return None
+
+
+def _to_astar_vocabulary_keys(
+    db,
+    student_skills: dict[str, str],
+    role_required_skills: list[dict[str, Any]],
+) -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Adapt database UUIDs to the canonical keys used by the A* vocabulary.
+
+    UUIDs remain the database representation, while the A* vocabulary currently
+    identifies skills by canonical names (or vocabulary IDs). This adapter keeps
+    that translation at the integration boundary instead of changing A*.
+    """
+    from app.models.skill import Skill
+
+    skill_ids = set(student_skills)
+    skill_ids.update(
+        requirement["skill_id"]
+        for requirement in role_required_skills
+        if requirement.get("skill_id") is not None
+    )
+    names_by_id = {
+        skill_id: skill_name
+        for skill_id, skill_name in db.query(Skill.id, Skill.name)
+        .filter(Skill.id.in_(skill_ids))
+        .all()
+    }
+
+    astar_student_skills = {
+        names_by_id.get(skill_id, skill_id): proficiency
+        for skill_id, proficiency in student_skills.items()
+    }
+    astar_role_skills = []
+    for requirement in role_required_skills:
+        adapted = dict(requirement)
+        canonical_name = names_by_id.get(adapted.get("skill_id"), adapted.get("skill_name"))
+        if canonical_name:
+            adapted["skill_id"] = canonical_name
+            adapted["skill_name"] = canonical_name
+        astar_role_skills.append(adapted)
+
+    return astar_student_skills, astar_role_skills
 
 
 def generate_learning_roadmap(
@@ -155,15 +201,45 @@ def generate_learning_roadmap(
             detail=f"Role with id {role_id} not found",
         )
 
-    # 3. Build the skill learning graph from role requirements and student data
+    # 3. Normalize role requirements once before passing them to the A* integration.
     student_skill_ids = set(student_skills.keys())
-    skill_graph = BUILD_GRAPH_FROM_ROLES(role_required_skills, student_skill_ids)
+    normalized_role_skills = normalize_role_required_skills(db, role_required_skills)
+    unresolved_role_skills = [
+        requirement["skill_name"]
+        for requirement in normalized_role_skills
+        if requirement["skill_id"] is None
+    ]
+    if unresolved_role_skills:
+        return {
+            "roadmap": {
+                "target_role": role_id,
+                "learning_steps": [],
+                "total_estimated_cost": 0.0,
+                "skills_acquired": 0,
+                "skills_remaining": len(unresolved_role_skills),
+                "algorithm": "A* Search with f(n)=g(n)+h(n)",
+                "unresolved_role_skills": unresolved_role_skills,
+            },
+            "total_estimated_cost": 0.0,
+            "nodes_expanded": 0,
+            "search_depth": 0,
+            "goal_reached": False,
+            "unresolved_role_skills": unresolved_role_skills,
+        }
+
+    # Adapt UUID-normalized database data to the canonical A* vocabulary keys.
+    astar_student_skills, astar_role_skills = _to_astar_vocabulary_keys(
+        db, student_skills, normalized_role_skills
+    )
+    skill_graph = BUILD_GRAPH_FROM_ROLES(
+        astar_role_skills, set(astar_student_skills)
+    )
 
     # 4. Run A* Search to find the minimum-cost learning path
     result = A_STAR_SEARCH(
-        student_skills=student_skills,
+        student_skills=astar_student_skills,
         target_role_id=role_id,
-        role_required_skills=role_required_skills,
+        role_required_skills=astar_role_skills,
         skill_graph=skill_graph,
     )
 

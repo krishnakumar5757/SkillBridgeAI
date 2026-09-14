@@ -6,6 +6,7 @@ import App from '../App';
 // Mock the API module so tests don't make real network calls
 vi.mock('../services/api', () => ({
   checkHealth: vi.fn(),
+  listCareerRoles: vi.fn().mockResolvedValue([]),
   ApiError: class ApiError extends Error {
     constructor(
       public code: string,
@@ -26,22 +27,22 @@ describe('App', () => {
     vi.clearAllMocks();
   });
 
-  it('renders without crashing', () => {
+  it('renders without crashing', async () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
-    expect(screen.getByText('SkillBridge AI')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('SkillBridge')).toBeInTheDocument());
   });
 
-  it('renders the dashboard by default', () => {
+  it('renders the dashboard by default', async () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     );
-    expect(screen.getByText('Welcome to SkillBridge AI')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Welcome back/)).toBeInTheDocument());
   });
 
   it('renders the health page at /health', async () => {

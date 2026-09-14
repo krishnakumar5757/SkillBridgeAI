@@ -1,11 +1,11 @@
 import { NavLink, useParams } from 'react-router-dom';
 import { Icon } from '../components/Layout';
 import { useEffect, useState } from 'react';
-import { analyzeCareerReadiness } from '../services/api';
+import { analyzeCareerReadiness, type CareerReadinessResponse } from '../services/api';
 
 function ReadinessPage() {
   const { roleId } = useParams<{ roleId: string }>();
-  const [readiness, setReadiness] = useState<any | null>(null);
+  const [readiness, setReadiness] = useState<CareerReadinessResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const studentId = typeof window !== 'undefined' ? localStorage.getItem('skillbridge_student_id') : null;
@@ -29,7 +29,7 @@ function ReadinessPage() {
       try {
         setLoading(true);
         setError(null);
-        const data: any = await analyzeCareerReadiness(studentId, roleId);
+        const data = await analyzeCareerReadiness(studentId, roleId);
 
         if (!cancelled && data) {
           setReadiness(data);
@@ -103,6 +103,8 @@ function ReadinessPage() {
       </div>
     );
   }
+
+  if (!readiness) return null;
 
   // Readiness data is loaded - display it
   const score = readiness.readiness_score;
@@ -221,7 +223,7 @@ function ReadinessPage() {
               Review skill gaps <Icon name="arrow" size={15}/>
             </NavLink>
           ) : (
-            <NavLink to="/roadmap" className="primary-button">
+            <NavLink to={roleId ? `/roadmap/${roleId}` : '/career'} className="primary-button">
               View learning roadmap <Icon name="arrow" size={15}/>
             </NavLink>
           )}

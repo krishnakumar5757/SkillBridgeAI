@@ -7,7 +7,6 @@ requirements and produces a skill gap report.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Any
 
 from app.utils.constants import (
@@ -18,12 +17,10 @@ from app.utils.constants import (
     PROFICIENCY_INTERMEDIATE,
     PROFICIENCY_ADVANCED,
     PROFICIENCY_LEVELS,
-    VALID_PRIORITIES,
 )
-from app.core.database import get_db
+from app.utils import normalize_role_required_skills
 from app.models.skill import Skill, StudentSkill
 from app.models.student import Student
-from app.schemas.student import StudentSkillResponse
 
 
 # Proficiency level mapping: beginner=1, intermediate=2, advanced=3
@@ -32,9 +29,6 @@ PROFICIENCY_SCALE: dict[str, int] = {
     "intermediate": PROFICIENCY_INTERMEDIATE,
     "advanced": PROFICIENCY_ADVANCED,
 }
-
-MAX_PROFICIENCY_LEVEL = 3
-
 
 def get_student_skills(db, student_id: str) -> dict[str, dict[str, Any]]:
     """Get all skills for a student, returning {skill_id: {proficiency, source, confidence}}.
@@ -146,6 +140,9 @@ def analyze_skill_gap(
     - missing skills (two+ levels below or not have the skill)
     - overall gap metrics
     """
+    if db.query(Student).filter(Student.id == student_id).first() is None:
+        raise ValueError(f"Student with id {student_id} not found")
+
     # Get student's current skills
     student_skills = get_student_skills(db, student_id)
 
@@ -153,6 +150,7 @@ def analyze_skill_gap(
     role_required = get_role_skills(role_id)
     if role_required is None:
         raise ValueError(f"Role with id {role_id} not found")
+    normalized_role_required = normalize_role_required_skills(db, role_required)
 
     # Build set of student skill IDs
     student_skill_ids = set(student_skills.keys())
@@ -164,26 +162,24 @@ def analyze_skill_gap(
 
     total_required = len(role_required)
     total_acquired = 0
-    total_skills_acquired = 0
 
-    for req_skill in role_required:
-        skill_id = req_skill["skill_id"]
+    for req_skill in normalized_role_required:
+        skill_uuid = req_skill["skill_id"]
+        skill_name = req_skill.get("skill_name") or "Unknown skill"
         required_prof = PROFICIENCY_SCALE.get(
             req_skill["minimum_proficiency"], PROFICIENCY_INTERMEDIATE
         )
         priority = req_skill.get("priority", "important")
         is_core = req_skill.get("is_core", False)
 
-        if skill_id in student_skill_ids:
+        if skill_uuid is not None and skill_uuid in student_skill_ids:
             # Student has this skill - check proficiency
-            current_prof = student_skills[skill_id]["proficiency"]
+            current_prof = student_skills[skill_uuid]["proficiency"]
             gap_status, gap_score = compute_gap(required_prof, current_prof)
 
-            total_skills_acquired += 1
-
             result = {
-                "skill_id": skill_id,
-                "skill_name": req_skill.get("skill_name", student_skills[skill_id]["skill_name"]),
+                "skill_id": skill_name,
+                "skill_name": skill_name,
                 "required_proficiency": req_skill["minimum_proficiency"],
                 "current_proficiency": list(PROFICIENCY_LEVELS.keys())[
                     list(PROFICIENCY_LEVELS.values()).index(current_prof)
@@ -206,8 +202,8 @@ def analyze_skill_gap(
         else:
             # Student does not have this skill at all - it's missing
             result = {
-                "skill_id": skill_id,
-                "skill_name": req_skill.get("skill_name", skill_id),
+                "skill_id": skill_name,
+                "skill_name": skill_name,
                 "required_proficiency": req_skill["minimum_proficiency"],
                 "current_proficiency": None,
                 "match_status": MATCH_MISSING,
@@ -222,20 +218,22 @@ def analyze_skill_gap(
     skill_coverage_percent = (total_acquired / total_skills_required * 100) if total_skills_required > 0 else 0.0
 
     # Core skills only
-    core_required = [s for s in role_required if s.get("is_core", False)]
+    core_required = [s for s in normalized_role_required if s.get("is_core", False)]
     core_acquired = sum(
         1 for s in core_required
-        if s["skill_id"] in student_skill_ids
+        if s["skill_id"] is not None
+        and s["skill_id"] in student_skill_ids
         and student_skills[s["skill_id"]]["proficiency"]
         >= PROFICIENCY_SCALE.get(s["minimum_proficiency"], PROFICIENCY_INTERMEDIATE)
     )
     core_skill_coverage_percent = (core_acquired / len(core_required) * 100) if core_required else 0.0
 
     # Critical priority skills only
-    critical_required = [s for s in role_required if s.get("priority") == "critical"]
+    critical_required = [s for s in normalized_role_required if s.get("priority") == "critical"]
     critical_acquired = sum(
         1 for s in critical_required
-        if s["skill_id"] in student_skill_ids
+        if s["skill_id"] is not None
+        and s["skill_id"] in student_skill_ids
         and student_skills[s["skill_id"]]["proficiency"]
         >= PROFICIENCY_SCALE.get(s["minimum_proficiency"], PROFICIENCY_INTERMEDIATE)
     )

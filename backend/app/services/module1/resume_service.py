@@ -14,10 +14,12 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.skill import Skill
 from app.models.student import Resume, Student
 from app.nlp.nlp_engine import NlpEngine
 from app.services.module1 import student_skill_service
 from app.skill_extraction.skill_extractor import SkillExtractor
+from app.utils import get_skill_id_by_name
 
 
 class ResumeService:
@@ -125,10 +127,26 @@ class ResumeService:
 
         # Add the extracted skills as resume-derived skills
         for skill in extracted_skills:
+            # The extractor uses the vocabulary's canonical name as the
+            # fallback identifier, while StudentSkill requires the database
+            # UUID. Resolve the name at this integration boundary and retain
+            # support for vocabularies that already provide database IDs.
+            extracted_skill_id = skill["skill_id"]
+            database_skill = db.query(Skill).filter(Skill.id == extracted_skill_id).first()
+            resolved_skill_id = (
+                extracted_skill_id
+                if database_skill is not None
+                else get_skill_id_by_name(db, skill.get("name"))
+            )
+            if resolved_skill_id is None:
+                raise ValueError(
+                    f"Extracted skill '{skill.get('name', extracted_skill_id)}' "
+                    "is not present in the skills table"
+                )
             student_skill_service.add_resume_skill(
                 db,
                 student_id=student_id,
-                skill_id=skill["skill_id"],
+                skill_id=resolved_skill_id,
                 proficiency=skill.get("proficiency", "beginner"),  # default if not inferred
                 confidence=skill["confidence"],
             )

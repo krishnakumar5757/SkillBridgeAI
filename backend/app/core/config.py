@@ -15,6 +15,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE = PROJECT_ROOT / ".env"
+DEFAULT_DATABASE_PATH = PROJECT_ROOT / "backend" / "skillbridge.db"
+
+
+def resolve_database_url(url: str) -> str:
+    """Resolve relative SQLite URLs from the backend project directory."""
+    if not url.startswith("sqlite:///") or ":memory:" in url:
+        return url
+
+    raw_path = url.removeprefix("sqlite:///")
+    path = Path(raw_path)
+    if path.is_absolute():
+        return url
+    resolved = (PROJECT_ROOT / "backend" / path).resolve()
+    return f"sqlite:///{resolved.as_posix()}"
 
 # ---------------------------------------------------------------------------
 # JWT secret guard constants
@@ -45,7 +59,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Database
     # ------------------------------------------------------------------
-    DATABASE_URL: str = "sqlite:///./skillbridge.db"
+    DATABASE_URL: str = f"sqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"
 
     # ------------------------------------------------------------------
     # Authentication

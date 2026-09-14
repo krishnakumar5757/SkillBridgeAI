@@ -82,3 +82,10 @@ export interface StudentSkillResponse {
   created_at: string; // ISO string
   updated_at: string; // ISO string
 }
+
+export interface ResumeUploadResponse {
+  resume_id: string;
+  file_name: string;
+  status: string;
+  message: string;
+}

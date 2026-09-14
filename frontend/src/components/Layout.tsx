@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import type { ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 
 const items = [
   { to: '/dashboard', label: 'Overview', icon: 'grid' },
@@ -27,7 +27,32 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 
 function Layout() {
   const location = useLocation();
-  const current = items.find((item) => location.pathname.startsWith(item.to));
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(() => (
+    typeof window !== 'undefined' ? localStorage.getItem('skillbridge_selected_role_id') : null
+  ));
+
+  useEffect(() => {
+    const handleRoleChange = (event: Event) => {
+      const roleId = (event as CustomEvent<string>).detail;
+      setSelectedRoleId(typeof roleId === 'string' && roleId ? roleId : null);
+    };
+
+    window.addEventListener('skillbridge-role-change', handleRoleChange);
+    return () => window.removeEventListener('skillbridge-role-change', handleRoleChange);
+  }, []);
+
+  const routeRoleId = location.pathname.match(/^\/(?:roadmap|readiness)\/([^/]+)/)?.[1] ?? null;
+  const navigationRoleId = routeRoleId ?? selectedRoleId;
+  const navigationItems = items.map((item) => {
+    if (item.to === '/roadmap' || item.to === '/readiness') {
+      return {
+        ...item,
+        to: navigationRoleId ? `${item.to}/${navigationRoleId}` : '/career',
+      };
+    }
+    return item;
+  });
+  const current = navigationItems.find((item) => location.pathname.startsWith(item.to));
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -37,13 +62,18 @@ function Layout() {
         </div>
         <div className="sidebar-caption">CAREER INTELLIGENCE</div>
         <nav className="sidebar-nav" aria-label="Main navigation">
-          {items.map((item) => (
-            <NavLink key={item.to} to={item.to} className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          {navigationItems.map((item, index) => {
+            const roleRequired = items[index].to === '/roadmap' || items[index].to === '/readiness';
+            const rolelessFallback = roleRequired && !navigationRoleId;
+
+            return (
+            <NavLink key={items[index].to} to={item.to} className={({ isActive }) => `sidebar-link ${isActive && !rolelessFallback ? 'active' : ''}`}>
               <Icon name={item.icon} />
               <span>{item.label}</span>
-              {current?.to === item.to && <span className="nav-dot" />}
+              {current?.to === item.to && !rolelessFallback && <span className="nav-dot" />}
             </NavLink>
-          ))}
+            );
+          })}
         </nav>
         <div className="sidebar-bottom">
           <div className="ai-status"><span className="status-pulse" /> AI engine ready</div>

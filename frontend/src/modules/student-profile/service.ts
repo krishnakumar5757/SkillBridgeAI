@@ -10,6 +10,7 @@ import type {
   ProjectResponse,
   StudentSkillCreateRequest,
   StudentSkillResponse,
+  ResumeUploadResponse,
 } from './types';
 
 /**
@@ -104,9 +105,9 @@ export async function addSelfReportedSkill(
   studentId: string,
   skill: StudentSkillCreateRequest
 ): Promise<StudentSkillResponse> {
-  return apiFetch<StudentSkillResponse>('/api/v1/skills/self-reported', {
+  return apiFetch<StudentSkillResponse>(`/api/v1/skills/self-reported?student_id=${encodeURIComponent(studentId)}`, {
     method: 'POST',
-    body: JSON.stringify({ student_id: studentId, ...skill }),
+    body: JSON.stringify(skill),
   });
 }
 
@@ -115,4 +116,15 @@ export async function addSelfReportedSkill(
  */
 export async function getSkills(studentId: string): Promise<StudentSkillResponse[]> {
   return apiFetch<StudentSkillResponse[]>(`/api/v1/skills/${studentId}`);
+}
+
+/** Upload and process a resume for a student. */
+export async function uploadResume(studentId: string, file: File): Promise<ResumeUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return apiFetch<ResumeUploadResponse>(
+    `/api/v1/students/${encodeURIComponent(studentId)}/resumes/upload`,
+    { method: 'POST', body: formData },
+  );
 }
